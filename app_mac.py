@@ -59,7 +59,7 @@ def inicializar_estado():
         "libertad_max_años": 60,
 
         "ultima_simulacion": None,
-        "estado_simulacion": "Todavía no hay ninguna simulación calculada."
+        "estado_simulacion": "Todavía no hay ninguna simulación calculada.",
 
         "rentabilidad_pendiente": None,
         "mensaje_rentabilidad_copiada": "",
