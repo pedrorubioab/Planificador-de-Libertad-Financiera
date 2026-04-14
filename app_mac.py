@@ -446,12 +446,12 @@ def simular_detallado(
     impuesto_pct, ingresos_mensuales=0
 ):
     diferencia_real = resumen["capital_bruto"] - resumen["valor_real_hoy"]
-        st.info(
-            f"Lectura rápida: aportas {formatear_euros(resumen['total_aportado'])}, "
-            f"terminas con {formatear_euros(resumen['neto_final'])} netos, "
-            f"y la inflación reduce el poder adquisitivo final en aproximadamente "
-            f"{formatear_euros(diferencia_real)} frente al valor nominal."
-        )
+    st.info(
+        f"Lectura rápida: aportas {formatear_euros(resumen['total_aportado'])}, "
+        f"terminas con {formatear_euros(resumen['neto_final'])} netos, "
+        f"y la inflación reduce el poder adquisitivo final en aproximadamente "
+        f"{formatear_euros(diferencia_real)} frente al valor nominal."
+    )
     tasa_mensual = (1 + tasa_anual) ** (1 / 12) - 1
     inflacion_mensual = (1 + inflacion_anual) ** (1 / 12) - 1
 
