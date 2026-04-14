@@ -60,6 +60,31 @@ def inicializar_estado():
 
         "ultima_simulacion": None,
         "estado_simulacion": "Todavía no hay ninguna simulación calculada."
+
+        "rentabilidad_pendiente": None,
+        "mensaje_rentabilidad_copiada": "",
+
+        "comp_a_nombre": "Plan A",
+        "comp_a_interes_anual": 6.0,
+        "comp_a_capital_inicial": 0.0,
+        "comp_a_aporte_mensual": 150.0,
+        "comp_a_subida_anual_aportes": 2.0,
+        "comp_a_aporte_extra_anual": 200.0,
+        "comp_a_años_inversion": 30,
+        "comp_a_inflacion_estimada": 3.0,
+        "comp_a_impuestos_rescate": 19.0,
+        "comp_a_ingresos_mensuales": 0.0,
+
+        "comp_b_nombre": "Plan B",
+        "comp_b_interes_anual": 8.0,
+        "comp_b_capital_inicial": 0.0,
+        "comp_b_aporte_mensual": 250.0,
+        "comp_b_subida_anual_aportes": 2.0,
+        "comp_b_aporte_extra_anual": 500.0,
+        "comp_b_años_inversion": 30,
+        "comp_b_inflacion_estimada": 3.0,
+        "comp_b_impuestos_rescate": 19.0,
+        "comp_b_ingresos_mensuales": 0.0,
     }
 
     for k, v in defaults.items():
@@ -68,6 +93,14 @@ def inicializar_estado():
 
 
 inicializar_estado()
+
+if st.session_state.get("rentabilidad_pendiente") is not None:
+    st.session_state["interes_anual"] = float(st.session_state["rentabilidad_pendiente"])
+    st.session_state["mensaje_rentabilidad_copiada"] = (
+        f"Se ha copiado {st.session_state['rentabilidad_pendiente']}% "
+        f"al campo de interés anual esperado del plan principal."
+    )
+    st.session_state["rentabilidad_pendiente"] = None
 
 
 # =========================================================
@@ -373,6 +406,36 @@ def leer_entradas_principales():
         "ingresos_mensuales": ingresos_mensuales
     }
 
+def leer_entradas_comparacion(prefijo):
+    tasa_anual = st.session_state[f"{prefijo}_interes_anual"] / 100
+    cap_inicial = st.session_state[f"{prefijo}_capital_inicial"]
+    mensual = st.session_state[f"{prefijo}_aporte_mensual"]
+    extra = st.session_state[f"{prefijo}_aporte_extra_anual"]
+    años = int(st.session_state[f"{prefijo}_años_inversion"])
+    inflacion_tasa = st.session_state[f"{prefijo}_inflacion_estimada"] / 100
+    impuesto_pct = st.session_state[f"{prefijo}_impuestos_rescate"] / 100
+    incremento_anual = st.session_state[f"{prefijo}_subida_anual_aportes"] / 100
+    ingresos_mensuales = st.session_state[f"{prefijo}_ingresos_mensuales"]
+
+    if años <= 0:
+        raise ValueError("Los años deben ser mayores que 0.")
+    if cap_inicial < 0 or mensual < 0 or extra < 0 or ingresos_mensuales < 0:
+        raise ValueError("No se admiten cantidades negativas.")
+    if tasa_anual <= -1 or inflacion_tasa <= -1 or impuesto_pct < 0:
+        raise ValueError("Revisa los porcentajes introducidos.")
+
+    return {
+        "tasa_anual": tasa_anual,
+        "cap_inicial": cap_inicial,
+        "mensual": mensual,
+        "extra": extra,
+        "años": años,
+        "inflacion_tasa": inflacion_tasa,
+        "impuesto_pct": impuesto_pct,
+        "incremento_anual": incremento_anual,
+        "ingresos_mensuales": ingresos_mensuales
+    }
+
 
 # =========================================================
 # SIMULACIÓN PRINCIPAL
@@ -382,6 +445,13 @@ def simular_detallado(
     tasa_anual, inflacion_anual, incremento_anual_aporte,
     impuesto_pct, ingresos_mensuales=0
 ):
+    diferencia_real = resumen["capital_bruto"] - resumen["valor_real_hoy"]
+        st.info(
+            f"Lectura rápida: aportas {formatear_euros(resumen['total_aportado'])}, "
+            f"terminas con {formatear_euros(resumen['neto_final'])} netos, "
+            f"y la inflación reduce el poder adquisitivo final en aproximadamente "
+            f"{formatear_euros(diferencia_real)} frente al valor nominal."
+        )
     tasa_mensual = (1 + tasa_anual) ** (1 / 12) - 1
     inflacion_mensual = (1 + inflacion_anual) ** (1 / 12) - 1
 
@@ -538,6 +608,8 @@ def simular_detallado(
     return datos_mensuales, datos_anuales, resumen
 
 
+
+
 # =========================================================
 # EXCEL
 # =========================================================
@@ -657,6 +729,31 @@ def crear_figura_regla_4():
     plt.tight_layout()
     return fig
 
+def crear_figura_comparacion(nombre_a, nombre_b, resumen_a, resumen_b, años):
+    fig = plt.figure(figsize=(14, 5))
+    eje_x = range(años + 1)
+
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax1.plot(eje_x, resumen_a["historial_nominal"], linewidth=3, label=nombre_a)
+    ax1.plot(eje_x, resumen_b["historial_nominal"], linewidth=3, label=nombre_b)
+    ax1.set_title("Comparación nominal")
+    ax1.set_xlabel("Años")
+    ax1.set_ylabel("Euros (€)")
+    ax1.legend()
+    ax1.grid(True, linestyle="--", alpha=0.5)
+
+    ax2 = fig.add_subplot(1, 2, 2)
+    ax2.plot(eje_x, resumen_a["historial_real"], linewidth=3, label=f"{nombre_a} (real)")
+    ax2.plot(eje_x, resumen_b["historial_real"], linewidth=3, label=f"{nombre_b} (real)")
+    ax2.set_title("Comparación real (euros de hoy)")
+    ax2.set_xlabel("Años")
+    ax2.set_ylabel("Euros reales")
+    ax2.legend()
+    ax2.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+    return fig
+
 
 # =========================================================
 # CÁLCULOS ADICIONALES
@@ -729,15 +826,8 @@ def simular_optimizacion_fiscal(capital_inicial, aporte_anual, años, rentabilid
         f"Ventaja estimada del vehículo fiscalmente eficiente: {formatear_euros(ventaja_fondo)}"
     )
 
-def calcular_libertad_financiera():
+def proyectar_libertad_financiera(objetivo_mensual, max_años_busqueda):
     params = leer_entradas_principales()
-    objetivo_mensual = st.session_state["libertad_objetivo"]
-    max_años = int(st.session_state["libertad_max_años"])
-
-    if objetivo_mensual <= 0:
-        raise ValueError("El objetivo mensual debe ser mayor que 0.")
-    if max_años <= 0:
-        raise ValueError("El máximo de años debe ser mayor que 0.")
 
     tasa_mensual = (1 + params["tasa_anual"]) ** (1 / 12) - 1
     inflacion_mensual = (1 + params["inflacion_tasa"]) ** (1 / 12) - 1
@@ -749,10 +839,11 @@ def calcular_libertad_financiera():
     indice_inflacion = 1.0
 
     meses = 0
-    conseguido = False
-    pension_real_objetivo = objetivo_mensual
+    mejor_pension_real = 0.0
+    mejor_neto_real = 0.0
+    mejor_mes = 0
 
-    for _año in range(1, max_años + 1):
+    for _año in range(1, max_años_busqueda + 1):
         for mes in range(1, 13):
             capital += mensual_actual
             aportado_total += mensual_actual
@@ -768,30 +859,87 @@ def calcular_libertad_financiera():
             beneficio = capital - aportado_total
             impuestos = max(beneficio, 0) * params["impuesto_pct"]
             neto = capital - impuestos
-            pension_real = (neto / indice_inflacion) * 0.04 / 12
+            neto_real = neto / indice_inflacion
+            pension_real = neto_real * 0.04 / 12
 
-            if pension_real >= pension_real_objetivo:
-                conseguido = True
-                años_totales = meses / 12
-                return (
-                    f"Objetivo alcanzado.\n\n"
-                    f"Para generar aproximadamente {formatear_euros(objetivo_mensual)}/mes "
-                    f"en euros de hoy con la regla del 4%, necesitarías cerca de:\n\n"
-                    f"- {meses} meses\n"
-                    f"- {años_totales:.2f} años\n\n"
-                    f"Capital neto real aproximado en ese momento: {formatear_euros(neto / indice_inflacion)}\n"
-                    f"Pensión real estimada: {formatear_euros(pension_real)}/mes"
-                )
+            if pension_real > mejor_pension_real:
+                mejor_pension_real = pension_real
+                mejor_neto_real = neto_real
+                mejor_mes = meses
+
+            if pension_real >= objetivo_mensual:
+                return {
+                    "alcanzado": True,
+                    "meses": meses,
+                    "años": meses / 12,
+                    "capital_neto_real": neto_real,
+                    "pension_real": pension_real,
+                    "aportado_total": aportado_total
+                }
 
         mensual_actual *= (1 + params["incremento_anual"])
         extra_actual *= (1 + params["incremento_anual"])
 
-    if not conseguido:
+    return {
+        "alcanzado": False,
+        "mejor_pension_real": mejor_pension_real,
+        "mejor_capital_neto_real": mejor_neto_real,
+        "mejor_mes": mejor_mes,
+        "mejor_años": mejor_mes / 12 if mejor_mes else max_años_busqueda,
+        "aportado_total": aportado_total
+    }
+
+
+def calcular_libertad_financiera():
+    params = leer_entradas_principales()
+    objetivo_mensual = st.session_state["libertad_objetivo"]
+    max_años = int(st.session_state["libertad_max_años"])
+
+    if objetivo_mensual <= 0:
+        raise ValueError("El objetivo mensual debe ser mayor que 0.")
+    if max_años <= 0:
+        raise ValueError("El máximo de años debe ser mayor que 0.")
+
+    capital_objetivo_hoy = objetivo_mensual * 12 / 0.04
+
+    resultado_limite = proyectar_libertad_financiera(objetivo_mensual, max_años)
+
+    if resultado_limite["alcanzado"]:
         return (
-            f"No se alcanza el objetivo de {formatear_euros(objetivo_mensual)}/mes "
-            f"en euros de hoy dentro del límite de {max_años} años.\n\n"
-            f"Prueba a aumentar aportes, rentabilidad esperada o plazo."
+            f"Objetivo alcanzado dentro del plazo indicado.\n\n"
+            f"Para generar aproximadamente {formatear_euros(objetivo_mensual)}/mes en euros de hoy "
+            f"con la regla del 4%, necesitarías aproximadamente un capital neto real de "
+            f"{formatear_euros(capital_objetivo_hoy)}.\n\n"
+            f"Con tus parámetros actuales lo alcanzarías en:\n"
+            f"- {resultado_limite['meses']} meses\n"
+            f"- {resultado_limite['años']:.2f} años\n\n"
+            f"Capital neto real aproximado en ese momento: {formatear_euros(resultado_limite['capital_neto_real'])}\n"
+            f"Pensión real estimada: {formatear_euros(resultado_limite['pension_real'])}/mes"
         )
+
+    resultado_extendido = proyectar_libertad_financiera(objetivo_mensual, 120)
+
+    if resultado_extendido["alcanzado"]:
+        return (
+            f"No se alcanza el objetivo dentro del límite de {max_años} años.\n\n"
+            f"Para obtener {formatear_euros(objetivo_mensual)}/mes en euros de hoy, "
+            f"necesitarías aproximadamente {formatear_euros(capital_objetivo_hoy)} "
+            f"de capital neto real aplicando la regla del 4%.\n\n"
+            f"Con los parámetros actuales sí sería posible, pero el plazo mínimo estimado sería de:\n"
+            f"- {resultado_extendido['meses']} meses\n"
+            f"- {resultado_extendido['años']:.2f} años\n\n"
+            f"Lo máximo que consigues dentro de tu límite actual de {max_años} años es una pensión real aproximada de "
+            f"{formatear_euros(resultado_limite['mejor_pension_real'])}/mes."
+        )
+
+    return (
+        f"No se alcanza el objetivo de {formatear_euros(objetivo_mensual)}/mes ni siquiera ampliando mucho el horizonte.\n\n"
+        f"Capital neto real orientativo que haría falta para ese objetivo: {formatear_euros(capital_objetivo_hoy)}.\n\n"
+        f"Con los parámetros actuales, lo máximo estimado que llegarías a generar sería "
+        f"{formatear_euros(resultado_limite['mejor_pension_real'])}/mes dentro de {max_años} años.\n"
+        f"Capital neto real aproximado en ese punto: {formatear_euros(resultado_limite['mejor_capital_neto_real'])}.\n\n"
+        f"Para acercarte al objetivo, prueba a aumentar aportes, ampliar plazo o revisar la rentabilidad esperada."
+    )
 
 
 # =========================================================
@@ -870,7 +1018,13 @@ tabs = st.tabs([
 # TAB 1 - SIMULACIÓN
 # =========================================================
 with tabs[0]:
-    st.subheader("Datos de entrada")
+    sim_subtabs = st.tabs(["📌 Plan de jubilación", "⚖️ Comparar 2 planes"])
+
+    with sim_subtabs[0]:
+        st.subheader("Datos de entrada")
+
+        if st.session_state.get("mensaje_rentabilidad_copiada"):
+            st.success(st.session_state["mensaje_rentabilidad_copiada"])
 
     with st.expander("Ayuda de los campos de entrada"):
         for clave in ["int", "cap", "mensual", "inc", "extra", "años", "infla", "tax", "ingresos"]:
@@ -1088,6 +1242,202 @@ with tabs[0]:
             st.dataframe(df_anual, use_container_width=True)
 
 
+    with sim_subtabs[1]:
+        st.subheader("Comparador de 2 planes de jubilación")
+        st.write(
+            "Aquí puedes enfrentar dos estrategias distintas y ver cuál llega más lejos. "
+            "Sirve para comparar, por ejemplo, más aportación vs más rentabilidad, "
+            "más plazo vs más ahorro, o planes prudentes frente a agresivos."
+        )
+
+        st.info(
+            "Este comparador muestra métricas y gráficos, pero no genera Excel. "
+            "La exportación sigue disponible solo en el plan principal."
+        )
+
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.markdown("### Plan A")
+            st.text_input("Nombre del plan A", key="comp_a_nombre")
+            st.number_input("Interés anual esperado A (%)", min_value=-99.0, max_value=1000.0, step=0.1, key="comp_a_interes_anual")
+            st.number_input("Capital inicial A (€)", min_value=0.0, step=100.0, key="comp_a_capital_inicial")
+            st.number_input("Aporte mensual A (€)", min_value=0.0, step=10.0, key="comp_a_aporte_mensual")
+            st.number_input("Subida anual aportes A (%)", min_value=0.0, max_value=1000.0, step=0.1, key="comp_a_subida_anual_aportes")
+            st.number_input("Aporte extra anual A (€)", min_value=0.0, step=10.0, key="comp_a_aporte_extra_anual")
+            st.number_input("Años de inversión A", min_value=1, max_value=100, step=1, key="comp_a_años_inversion")
+            st.number_input("Inflación estimada A (%)", min_value=-99.0, max_value=1000.0, step=0.1, key="comp_a_inflacion_estimada")
+            st.number_input("Impuestos al rescate A (%)", min_value=0.0, max_value=100.0, step=0.1, key="comp_a_impuestos_rescate")
+            st.number_input("Ingresos mensuales A (€)", min_value=0.0, step=50.0, key="comp_a_ingresos_mensuales")
+
+        with col_b:
+            st.markdown("### Plan B")
+            st.text_input("Nombre del plan B", key="comp_b_nombre")
+            st.number_input("Interés anual esperado B (%)", min_value=-99.0, max_value=1000.0, step=0.1, key="comp_b_interes_anual")
+            st.number_input("Capital inicial B (€)", min_value=0.0, step=100.0, key="comp_b_capital_inicial")
+            st.number_input("Aporte mensual B (€)", min_value=0.0, step=10.0, key="comp_b_aporte_mensual")
+            st.number_input("Subida anual aportes B (%)", min_value=0.0, max_value=1000.0, step=0.1, key="comp_b_subida_anual_aportes")
+            st.number_input("Aporte extra anual B (€)", min_value=0.0, step=10.0, key="comp_b_aporte_extra_anual")
+            st.number_input("Años de inversión B", min_value=1, max_value=100, step=1, key="comp_b_años_inversion")
+            st.number_input("Inflación estimada B (%)", min_value=-99.0, max_value=1000.0, step=0.1, key="comp_b_inflacion_estimada")
+            st.number_input("Impuestos al rescate B (%)", min_value=0.0, max_value=100.0, step=0.1, key="comp_b_impuestos_rescate")
+            st.number_input("Ingresos mensuales B (€)", min_value=0.0, step=50.0, key="comp_b_ingresos_mensuales")
+
+        if st.button("Comparar planes", use_container_width=True):
+            try:
+                params_a = leer_entradas_comparacion("comp_a")
+                params_b = leer_entradas_comparacion("comp_b")
+
+                _, datos_anuales_a, resumen_a = simular_detallado(
+                    cap_inicial=params_a["cap_inicial"],
+                    aporte_mensual=params_a["mensual"],
+                    aporte_extra_anual=params_a["extra"],
+                    años=params_a["años"],
+                    tasa_anual=params_a["tasa_anual"],
+                    inflacion_anual=params_a["inflacion_tasa"],
+                    incremento_anual_aporte=params_a["incremento_anual"],
+                    impuesto_pct=params_a["impuesto_pct"],
+                    ingresos_mensuales=params_a["ingresos_mensuales"]
+                )
+
+                _, datos_anuales_b, resumen_b = simular_detallado(
+                    cap_inicial=params_b["cap_inicial"],
+                    aporte_mensual=params_b["mensual"],
+                    aporte_extra_anual=params_b["extra"],
+                    años=params_b["años"],
+                    tasa_anual=params_b["tasa_anual"],
+                    inflacion_anual=params_b["inflacion_tasa"],
+                    incremento_anual_aporte=params_b["incremento_anual"],
+                    impuesto_pct=params_b["impuesto_pct"],
+                    ingresos_mensuales=params_b["ingresos_mensuales"]
+                )
+
+                nombre_a = st.session_state["comp_a_nombre"].strip() or "Plan A"
+                nombre_b = st.session_state["comp_b_nombre"].strip() or "Plan B"
+
+                st.markdown("## Resultado comparado")
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric(
+                    f"Neto final · {nombre_a}",
+                    formatear_euros(resumen_a["neto_final"])
+                )
+                c2.metric(
+                    f"Neto final · {nombre_b}",
+                    formatear_euros(resumen_b["neto_final"]),
+                    delta=formatear_euros(resumen_b["neto_final"] - resumen_a["neto_final"])
+                )
+                c3.metric(
+                    f"Pensión real · {nombre_a}",
+                    f"{formatear_euros(resumen_a['pension_real'])}/mes"
+                )
+                c4.metric(
+                    f"Pensión real · {nombre_b}",
+                    f"{formatear_euros(resumen_b['pension_real'])}/mes",
+                    delta=formatear_euros(resumen_b["pension_real"] - resumen_a["pension_real"])
+                )
+
+                mejor_neto = nombre_a if resumen_a["neto_final"] >= resumen_b["neto_final"] else nombre_b
+                mejor_pension = nombre_a if resumen_a["pension_real"] >= resumen_b["pension_real"] else nombre_b
+
+                st.info(
+                    f"El plan con mayor capital neto final es **{mejor_neto}**. "
+                    f"El plan con mayor pensión real estimada es **{mejor_pension}**."
+                )
+
+                años_grafica = min(
+                    len(resumen_a["historial_nominal"]) - 1,
+                    len(resumen_b["historial_nominal"]) - 1
+                )
+
+                resumen_a_graf = {
+                    "historial_nominal": resumen_a["historial_nominal"][:años_grafica + 1],
+                    "historial_real": resumen_a["historial_real"][:años_grafica + 1]
+                }
+                resumen_b_graf = {
+                    "historial_nominal": resumen_b["historial_nominal"][:años_grafica + 1],
+                    "historial_real": resumen_b["historial_real"][:años_grafica + 1]
+                }
+
+                fig_comp = crear_figura_comparacion(
+                    nombre_a,
+                    nombre_b,
+                    resumen_a_graf,
+                    resumen_b_graf,
+                    años_grafica
+                )
+                st.pyplot(fig_comp)
+
+                tabla_comparativa = pd.DataFrame([
+                    {
+                        "Métrica": "Total aportado",
+                        nombre_a: resumen_a["total_aportado"],
+                        nombre_b: resumen_b["total_aportado"],
+                    },
+                    {
+                        "Métrica": "Capital bruto",
+                        nombre_a: resumen_a["capital_bruto"],
+                        nombre_b: resumen_b["capital_bruto"],
+                    },
+                    {
+                        "Métrica": "Beneficio bruto",
+                        nombre_a: resumen_a["beneficio_bruto"],
+                        nombre_b: resumen_b["beneficio_bruto"],
+                    },
+                    {
+                        "Métrica": "Impuestos",
+                        nombre_a: resumen_a["impuestos"],
+                        nombre_b: resumen_b["impuestos"],
+                    },
+                    {
+                        "Métrica": "Neto final",
+                        nombre_a: resumen_a["neto_final"],
+                        nombre_b: resumen_b["neto_final"],
+                    },
+                    {
+                        "Métrica": "Valor real hoy",
+                        nombre_a: resumen_a["valor_real_hoy"],
+                        nombre_b: resumen_b["valor_real_hoy"],
+                    },
+                    {
+                        "Métrica": "Pensión estimada",
+                        nombre_a: resumen_a["pension_vitalicia"],
+                        nombre_b: resumen_b["pension_vitalicia"],
+                    },
+                    {
+                        "Métrica": "Pensión real",
+                        nombre_a: resumen_a["pension_real"],
+                        nombre_b: resumen_b["pension_real"],
+                    },
+                ])
+
+                st.markdown("### Tabla comparativa")
+                st.dataframe(tabla_comparativa, use_container_width=True)
+
+                st.markdown("### Vista año a año")
+                vista_a = pd.DataFrame(datos_anuales_a).copy()
+                vista_b = pd.DataFrame(datos_anuales_b).copy()
+
+                vista_a["Plan"] = nombre_a
+                vista_b["Plan"] = nombre_b
+
+                columnas_utiles = [
+                    "Plan",
+                    "Año",
+                    "Aportado acumulado",
+                    "Capital total nominal fin de año",
+                    "Capital neto estimado fin de año",
+                    "Capital neto real fin de año",
+                    "Pensión mensual real estimada",
+                ]
+
+                df_union = pd.concat([vista_a[columnas_utiles], vista_b[columnas_utiles]], ignore_index=True)
+                st.dataframe(df_union, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"No se pudo comparar los planes. Detalle: {e}")
+
+
 # =========================================================
 # TAB 2 - ACADEMIA
 # =========================================================
@@ -1187,10 +1537,31 @@ with tabs[2]:
 with tabs[3]:
     st.subheader("LIBERTAD FINANCIERA")
     st.write(
-        "Aquí haces el cálculo inverso: en vez de preguntar cuántos años quieres invertir, "
-        "preguntas cuánto dinero quieres que te genere tu cartera al mes.\n\n"
-        "Este cálculo usa como referencia la pensión mensual real estimada por la regla del 4%, "
-        "es decir, en euros de hoy."
+        "Esta pestaña hace el cálculo inverso al plan de jubilación.\n\n"
+        "En vez de preguntarte cuánto capital tendrás dentro de X años, aquí preguntas:\n"
+        "**cuánto tiempo tardaría mi cartera en generar una cantidad mensual concreta**.\n\n"
+        "La referencia utilizada es la **regla del 4%**, aplicada sobre el capital neto y ajustada a inflación, "
+        "por lo que el resultado se expresa en **euros de hoy**."
+    )
+
+    with st.expander("Cómo interpretar esta pestaña"):
+        st.write(
+            "**Dinero deseado al mes (euros de hoy)**:\n"
+            "es la cantidad mensual que querrías poder sacar de tu cartera manteniendo poder adquisitivo actual.\n\n"
+            "**Máximo de años a simular**:\n"
+            "es el horizonte que tú quieres poner como límite para comprobar si llegas o no.\n\n"
+            "Ejemplo:\n"
+            "- Si pones 1.500 €/mes y 25 años, la app te dirá si con tu plan actual puedes llegar a generar "
+            "ese importe mensual real dentro de 25 años.\n"
+            "- Si no llegas, ahora también te dirá qué máximo alcanzarías y, si fuera posible más adelante, "
+            "el plazo mínimo estimado para conseguirlo."
+        )
+
+    capital_objetivo = st.session_state["libertad_objetivo"] * 12 / 0.04
+    st.info(
+        f"Referencia útil: para generar {formatear_euros(st.session_state['libertad_objetivo'])}/mes "
+        f"en euros de hoy con la regla del 4%, haría falta aproximadamente un capital neto real de "
+        f"{formatear_euros(capital_objetivo)}."
     )
 
     l1, l2 = st.columns(2)
@@ -1241,8 +1612,8 @@ with tabs[4]:
     if st.button("Usar rentabilidad seleccionada en la simulación principal"):
         fila = next((a for a in ACTIVOS if a[0] == activo_seleccionado), None)
         if fila:
-            st.session_state["interes_anual"] = float(fila[1])
-            st.success(f"Se ha copiado {fila[1]}% al campo de interés anual esperado.")
+            st.session_state["rentabilidad_pendiente"] = float(fila[1])
+            st.rerun()
 
 
 # =========================================================
